@@ -139,11 +139,18 @@ public class UserActivityService {
 
     // Tính streak - CHỈ cần kiểm tra minutes_used >= 15
     public int calculateCurrentStreak(Long userId) {
-        LocalDate currentDate = LocalDate.now();
+        LocalDate today = LocalDate.now();
         List<UserActivity> recentActivities = userActivityRepository.findByUserIdOrderByActivityDateDesc(userId);
 
         int streak = 0;
-        LocalDate checkDate = currentDate;
+        LocalDate checkDate = today;
+           // Nếu hôm nay chưa đủ 15p thì lùi về hôm qua để bắt đầu tính streak
+           Optional<UserActivity> todayAct = recentActivities.stream()
+                       .filter(a -> a.getActivityDate().equals(today))
+                       .findFirst();
+           if (todayAct.isEmpty() || !isStudiedDay(todayAct.get().getMinutesUsed())) {
+                    checkDate = today.minusDays(1);
+           }
 
         // Kiểm tra từ ngày hiện tại ngược về quá khứ
         while (true) {
