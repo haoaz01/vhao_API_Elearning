@@ -6,11 +6,9 @@ import vn.anhtuan.demoAPI.Entity.UserActivity;
 import vn.anhtuan.demoAPI.POJO.CalendarDayPOJO;
 import vn.anhtuan.demoAPI.POJO.UserActivityPOJO;
 import vn.anhtuan.demoAPI.POJO.UserStreakResponsePOJO;
-import vn.anhtuan.demoAPI.REST.UserActivityController;
 import vn.anhtuan.demoAPI.Repository.UserActivityRepository;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -22,6 +20,23 @@ public class UserActivityService {
     @Autowired
     private UserActivityRepository userActivityRepository;
 
+
+    // Cộng dồn thời gian online từ các phiên nhỏ
+    public UserActivity accumulateOnlineTime(Long userId, LocalDate activityDate, Integer sessionMinutes) {
+        Optional<UserActivity> existingActivity = userActivityRepository.findByUserIdAndActivityDate(userId, activityDate);
+
+        if (existingActivity.isPresent()) {
+            UserActivity activity = existingActivity.get();
+            // CỘNG DỒN: thêm session minutes vào tổng hiện tại
+            int newTotal = activity.getMinutesUsed() + sessionMinutes;
+            activity.setMinutesUsed(newTotal);
+            return userActivityRepository.save(activity);
+        } else {
+            // Tạo mới nếu chưa có bản ghi cho ngày này
+            UserActivity newActivity = new UserActivity(userId, activityDate, sessionMinutes);
+            return userActivityRepository.save(newActivity);
+        }
+    }
 
     // Tạo hoặc cập nhật activity (CỘNG DỒN PHÚT)
     public UserActivity saveOrUpdateActivity(Long userId, LocalDate activityDate, Integer additionalMinutes) {
@@ -65,20 +80,14 @@ public class UserActivityService {
     }
 
     // Lấy thông tin streak và calendar
+    // Lấy thông tin streak và calendar
     public UserStreakResponsePOJO getUserStreakAndCalendar(Long userId, int monthsToShow) {
         LocalDate endDate = LocalDate.now();
         LocalDate startDate = endDate.minusMonths(monthsToShow);
 
-        // Lấy dữ liệu activities trong khoảng thời gian
         List<UserActivity> activities = userActivityRepository.findByUserIdAndActivityDateBetween(userId, startDate, endDate);
-
-        // Tính streak
-        int currentStreak = calculateCurrentStreak(userId, activities);
-
-        // Tạo dữ liệu calendar
+        int currentStreak = calculateCurrentStreak(userId);
         List<CalendarDayPOJO> calendarDays = generateCalendarData(userId, startDate, endDate, activities, currentStreak);
-
-        // Lấy danh sách ngày trong streak hiện tại
         List<LocalDate> streakDays = getCurrentStreakDays(userId, activities, currentStreak);
 
         UserStreakResponsePOJO response = new UserStreakResponsePOJO();
@@ -87,54 +96,112 @@ public class UserActivityService {
         response.setCalendarDays(calendarDays);
         response.setStreakDays(streakDays);
 
-        // Set start và end date của streak
         if (!streakDays.isEmpty()) {
-            response.setStreakStartDate(streakDays.get(streakDays.size() - 1)); // Ngày đầu streak (cũ nhất)
-            response.setStreakEndDate(streakDays.get(0)); // Ngày cuối streak (mới nhất)
+            response.setStreakStartDate(streakDays.get(streakDays.size() - 1));
+            response.setStreakEndDate(streakDays.get(0));
         }
 
         return response;
     }
+//    public UserStreakResponsePOJO getUserStreakAndCalendar(Long userId, int monthsToShow) {
+//        LocalDate endDate = LocalDate.now();
+//        LocalDate startDate = endDate.minusMonths(monthsToShow);
+//
+//        // Lấy dữ liệu activities trong khoảng thời gian
+//        List<UserActivity> activities = userActivityRepository.findByUserIdAndActivityDateBetween(userId, startDate, endDate);
+//
+//        // Tính streak
+//        int currentStreak = calculateCurrentStreak(userId, activities);
+//
+//        // Tạo dữ liệu calendar
+//        List<CalendarDayPOJO> calendarDays = generateCalendarData(userId, startDate, endDate, activities, currentStreak);
+//
+//        // Lấy danh sách ngày trong streak hiện tại
+//        List<LocalDate> streakDays = getCurrentStreakDays(userId, activities, currentStreak);
+//
+//        UserStreakResponsePOJO response = new UserStreakResponsePOJO();
+//        response.setUserId(userId);
+//        response.setCurrentStreak(currentStreak);
+//        response.setCalendarDays(calendarDays);
+//        response.setStreakDays(streakDays);
+//
+//        // Set start và end date của streak
+//        if (!streakDays.isEmpty()) {
+//            response.setStreakStartDate(streakDays.get(streakDays.size() - 1)); // Ngày đầu streak (cũ nhất)
+//            response.setStreakEndDate(streakDays.get(0)); // Ngày cuối streak (mới nhất)
+//        }
+//
+//        return response;
+//    }
+
 
     // Tính current streak - CHỈ tính những ngày học trên 15 phút
-    private int calculateCurrentStreak(Long userId, List<UserActivity> activities) {
-        // Lọc chỉ những ngày học trên 15 phút
-        List<UserActivity> validActivities = activities.stream()
-                .filter(activity -> isStudiedDay(activity.getMinutesUsed()))
-                .collect(Collectors.toList());
 
-        if (validActivities.isEmpty()) {
-            return 0;
-        }
-
-        // Sắp xếp activities theo ngày giảm dần
-        validActivities.sort((a1, a2) -> a2.getActivityDate().compareTo(a1.getActivityDate()));
-
+    // Tính streak - CHỈ cần kiểm tra minutes_used >= 15
+    public int calculateCurrentStreak(Long userId) {
         LocalDate currentDate = LocalDate.now();
+        List<UserActivity> recentActivities = userActivityRepository.findByUserIdOrderByActivityDateDesc(userId);
+
         int streak = 0;
+        LocalDate checkDate = currentDate;
 
-        // Kiểm tra nếu hôm nay có học VÀ học trên 15 phút
-        boolean todayStudied = validActivities.stream()
-                .anyMatch(activity -> activity.getActivityDate().equals(currentDate));
-
-        LocalDate checkDate = todayStudied ? currentDate : currentDate.minusDays(1);
-
-        // Kiểm tra streak liên tục
+        // Kiểm tra từ ngày hiện tại ngược về quá khứ
         while (true) {
             final LocalDate dateToCheck = checkDate;
-            boolean studiedOnDate = validActivities.stream()
-                    .anyMatch(activity -> activity.getActivityDate().equals(dateToCheck));
+            Optional<UserActivity> activity = recentActivities.stream()
+                    .filter(a -> a.getActivityDate().equals(dateToCheck))
+                    .findFirst();
 
-            if (studiedOnDate) {
+            // Nếu có activity và minutes_used >= 15 thì tính streak
+            if (activity.isPresent() && isStudiedDay(activity.get().getMinutesUsed())) {
                 streak++;
-                checkDate = checkDate.minusDays(1);
+                checkDate = checkDate.minusDays(1); // Kiểm tra ngày trước đó
             } else {
-                break;
+                break; // Ngắt khi gặp ngày không học
             }
         }
 
         return streak;
     }
+//    private int calculateCurrentStreak(Long userId, List<UserActivity> activities) {
+//        // Lọc chỉ những ngày học trên 15 phút
+//        List<UserActivity> validActivities = activities.stream()
+//                .filter(activity -> isStudiedDay(activity.getMinutesUsed()))
+//                .collect(Collectors.toList());
+//
+//        if (validActivities.isEmpty()) {
+//            return 0;
+//        }
+//
+//        // Sắp xếp activities theo ngày giảm dần
+//        validActivities.sort((a1, a2) -> a2.getActivityDate().compareTo(a1.getActivityDate()));
+//
+//        LocalDate currentDate = LocalDate.now();
+//        int streak = 0;
+//
+//        // Kiểm tra nếu hôm nay có học VÀ học trên 15 phút
+//        boolean todayStudied = validActivities.stream()
+//                .anyMatch(activity -> activity.getActivityDate().equals(currentDate));
+//
+//        LocalDate checkDate = todayStudied ? currentDate : currentDate.minusDays(1);
+//
+//        // Kiểm tra streak liên tục
+//        while (true) {
+//            final LocalDate dateToCheck = checkDate;
+//            boolean studiedOnDate = validActivities.stream()
+//                    .anyMatch(activity -> activity.getActivityDate().equals(dateToCheck));
+//
+//            if (studiedOnDate) {
+//                streak++;
+//                checkDate = checkDate.minusDays(1);
+//            } else {
+//                break;
+//            }
+//        }
+//
+//        return streak;
+//    }
+
 
     // Lấy danh sách ngày trong current streak - CHỈ những ngày học trên 15 phút
     private List<LocalDate> getCurrentStreakDays(Long userId, List<UserActivity> activities, int currentStreak) {
@@ -218,6 +285,20 @@ public class UserActivityService {
         return activities.stream()
                 .filter(activity -> isStudiedDay(activity.getMinutesUsed()))
                 .count();
+    }
+
+    // Đơn giản: Cập nhật tổng thời gian online trong ngày
+    public UserActivity updateDailyOnlineTime(Long userId, LocalDate activityDate, Integer totalOnlineMinutes) {
+        Optional<UserActivity> existingActivity = userActivityRepository.findByUserIdAndActivityDate(userId, activityDate);
+
+        if (existingActivity.isPresent()) {
+            UserActivity activity = existingActivity.get();
+            activity.setMinutesUsed(totalOnlineMinutes);
+            return userActivityRepository.save(activity);
+        } else {
+            UserActivity newActivity = new UserActivity(userId, activityDate, totalOnlineMinutes);
+            return userActivityRepository.save(newActivity);
+        }
     }
 
     // Convert Entity to DTO

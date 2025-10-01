@@ -74,6 +74,52 @@ public class UserActivityController {
         }
     }
 
+    // Cộng dồn thời gian online từ phiên sử dụng
+    @PostMapping("/accumulate-session")
+    public ResponseEntity<?> accumulateSessionTime(
+            @RequestParam Long userId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate activityDate,
+            @RequestParam Integer sessionMinutes) {
+
+        try {
+            // Validate input
+            if (sessionMinutes < 0) {
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", false);
+                response.put("message", "Session minutes cannot be negative");
+                return ResponseEntity.badRequest().body(response);
+            }
+
+            // Lấy tổng thời gian hiện tại trước khi cập nhật
+            Integer currentTotalMinutes = userActivityService.getTotalMinutesByDate(userId, activityDate);
+            boolean wasStudiedBefore = userActivityService.isStudiedDay(currentTotalMinutes);
+
+            // Cộng dồn thời gian phiên này
+            UserActivity activity = userActivityService.accumulateOnlineTime(userId, activityDate, sessionMinutes);
+
+            // Kiểm tra trạng thái học sau khi cập nhật
+            boolean isStudied = userActivityService.isStudiedDay(activity.getMinutesUsed());
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("previousTotalMinutes", currentTotalMinutes);
+            response.put("sessionMinutes", sessionMinutes);
+            response.put("newTotalMinutes", activity.getMinutesUsed());
+            response.put("isStudiedDay", isStudied);
+            response.put("wasStudiedBefore", wasStudiedBefore);
+            response.put("statusChanged", (wasStudiedBefore != isStudied));
+            response.put("remainingMinutes", Math.max(0, 15 - activity.getMinutesUsed()));
+            response.put("message", "Session time accumulated successfully");
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Error accumulating session time: " + e.getMessage());
+            return ResponseEntity.badRequest().body(response);
+        }
+    }
+
     // Lấy tổng thời gian học trong ngày
     @GetMapping("/{userId}/total-minutes/{date}")
     public ResponseEntity<?> getTotalMinutesByDate(
@@ -100,8 +146,55 @@ public class UserActivityController {
         }
     }
 
-    // Lấy thông tin streak và calendar
+    // Các endpoint khác giữ nguyên...
     @GetMapping("/streak/{userId}")
+    public ResponseEntity<?> getUserStreak(@PathVariable Long userId) {
+        try {
+            int currentStreak = userActivityService.calculateCurrentStreak(userId);
+            LocalDate today = LocalDate.now();
+            Integer todayMinutes = userActivityService.getTotalMinutesByDate(userId, today);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("currentStreak", currentStreak);
+            response.put("todayMinutes", todayMinutes);
+            response.put("minStudyMinutes", 15);
+            response.put("remainingMinutes", Math.max(0, 15 - todayMinutes));
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Error fetching streak: " + e.getMessage());
+            return ResponseEntity.badRequest().body(response);
+        }
+    }
+
+    @GetMapping("/{userId}/today")
+    public ResponseEntity<?> getTodayOnlineTime(@PathVariable Long userId) {
+        try {
+            LocalDate today = LocalDate.now();
+            Integer totalMinutes = userActivityService.getTotalMinutesByDate(userId, today);
+            boolean isStudied = userActivityService.isStudiedDay(totalMinutes);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("date", today);
+            response.put("totalMinutes", totalMinutes);
+            response.put("isStudiedDay", isStudied);
+            response.put("minStudyMinutes", 15);
+            response.put("remainingMinutes", Math.max(0, 15 - totalMinutes));
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Error fetching today's data: " + e.getMessage());
+            return ResponseEntity.badRequest().body(response);
+        }
+    }
+    // Lấy thông tin streak và calendar
+    @GetMapping("/streak-calendar/{userId}")
     public ResponseEntity<?> getUserStreakAndCalendar(
             @PathVariable Long userId,
             @RequestParam(defaultValue = "3") int months) {
