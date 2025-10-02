@@ -97,4 +97,11 @@ public class User {
     public void setProgresses(List<Progress> progresses) {
         this.progresses = progresses;
     }
+
+
+    @Column(name = "avg_percentage")
+    private Double avgPercentage;     // có thể để Float cũng được
+
+    public Double getAvgPercentage() { return avgPercentage; }
+    public void setAvgPercentage(Double avgPercentage) { this.avgPercentage = avgPercentage; }
 }

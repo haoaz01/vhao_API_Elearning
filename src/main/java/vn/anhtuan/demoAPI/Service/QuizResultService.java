@@ -109,6 +109,7 @@ public class QuizResultService {
         );
         QuizResult saved = quizResultRepository.save(quizResult);
         quizResultRepository.flush();
+        updateUserAvgPercentage(userId);
         return saved;
     }
 
@@ -142,6 +143,7 @@ public class QuizResultService {
     public Map<String, Object> getUserStatistics(Long userId) {
         List<QuizResult> results = quizResultRepository.findByUserId(userId);
         Map<String, Object> stats = new HashMap<>();
+        
         stats.put("totalQuizzesTaken", results.size());
 
         if (!results.isEmpty()) {
@@ -173,6 +175,9 @@ public class QuizResultService {
             stats.put("quizzesBySubject", new HashMap<>());
             stats.put("averageDurationSeconds", 0);
         }
+        User user = userRepository.findById(userId).orElse(null);
+        Double avgPercentage = (user != null && user.getAvgPercentage() != null) ? user.getAvgPercentage() : 0.0;
+        stats.put("avgPercentage", avgPercentage);
         return stats;
     }
 
@@ -277,5 +282,35 @@ public class QuizResultService {
     public Double getAverageDailyAccuracy(Long userId) {
         Double avg = quizResultRepository.findAverageDailyAccuracyByUser(userId);
         return (avg == null) ? 0.0 : avg;
+    }
+
+    /** Tính lại % trung bình từ tất cả QuizResult của user và lưu vào users.avg_percentage */
+    private void updateUserAvgPercentage(Long userId) {
+        // Lấy tất cả kết quả của user
+        List<QuizResult> all = quizResultRepository.findByUserId(userId);
+        if (all == null || all.isEmpty()) {
+            // chưa có bài nào => set null hoặc 0 tùy bạn
+            userRepository.findById(userId).ifPresent(u -> {
+                u.setAvgPercentage(0.0);
+                userRepository.save(u);
+            });
+            return;
+        }
+
+        // Điểm trong QuizResult là thang 0..10. Lấy trung bình điểm rồi quy về %
+        double avgScore10 = all.stream()
+                .mapToDouble(r -> r.getScore().doubleValue())
+                .average()
+                .orElse(0.0);
+
+        double avgPercent = (avgScore10 / 10.0) * 100.0;      // 0..100
+
+        // Làm tròn 1 chữ số thập phân (ví dụ 29.5)
+        double rounded = Math.round(avgPercent * 10.0) / 10.0;
+
+        userRepository.findById(userId).ifPresent(u -> {
+            u.setAvgPercentage((double) rounded);
+            userRepository.save(u);
+        });
     }
 }
