@@ -30,16 +30,10 @@ public class SecurityConfig {
                                 "/api/auth/login",
                                 "/api/auth/forgot-password",
                                 "/api/auth/reset-password",
-
                                 // Data
                                 "/api/data/**",
-
                                 // PDF
                                 "/api/pdf/**",
-
-                                "/api/user-activity/**",
-
-
                                 // Quizzes - public
                                 "/api/quizzes",
                                 "/api/quizzes/*",
@@ -49,14 +43,8 @@ public class SecurityConfig {
                                 "/api/quizzes/grades/**",
                                 "/api/quizzes/grades/*/subjects/**",
                                 "/api/quizzes/subjects/**",
-                                "/ping",
                                 // Search
                                 "/api/search/**",
-
-                                "/api/quizresults/accuracy/**",
-                                "/api/quizresults/**",
-                                "/api/quizresults/accuracy",
-                                "/api/quizresults/accuracy/daily",
 
                                 // Subjects & Content - public
                                 "/api/subjects/**",
@@ -64,7 +52,6 @@ public class SecurityConfig {
                                 "/api/chapters/**",
                                 "/api/lessons/**",
                                 "/api/exercises/**",
-
                                 // H2 Console
                                 "/h2-console/**"
                         ).permitAll()
@@ -81,16 +68,18 @@ public class SecurityConfig {
                                 "/api/auth/change-password",
                                 "/api/auth/validate-token",
                                 "/api/users/**",
-
-
-//streak
-//                                "/api/streak/**",
-
                                 "/api/quizzes/*/submit",
                                 "/api/quizzes/*/history",
                                 "/api/quizzes/*/users/*/history",
                                 "/api/quizzes/*/users/*/best-score",
                                 "/api/quizzes/*/questions",
+                                "/ping",
+                                "/api/user-activity/**",
+
+                                "/api/quizresults/accuracy/**",
+                                "/api/quizresults/**",
+                                "/api/quizresults/accuracy",
+                                "/api/quizresults/accuracy/daily",
 
                                 "/api/progress/complete-lesson",
                                 "/api/progress/uncomplete-lesson/**",
